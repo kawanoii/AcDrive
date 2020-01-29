@@ -1,66 +1,96 @@
 package main
 
-import (
-	"flag"
-	"fmt"
-	"os"
-)
+import "github.com/kataras/iris"
+
+var status Status
+
+func init() {
+	ck, err := rCookie()
+	if err != nil {
+		status.AcAuth = 0
+	} else {
+		_, err := getUpToken(ck)
+		if err != nil {
+			status.AcAuth = -1
+		} else {
+			status.AcAuth = 1
+		}
+	}
+}
 
 func main() {
-
-	if len(os.Args) < 2 {
-		fmt.Println("请使用 'login' , 'download' , 'upload' 或 'info' 子命令。\"-h\" 参数查看帮助。\n例如 acdrive login -h \n查看登录的帮助。")
-		os.Exit(1)
+	var ck Cookies
+	if status.AcAuth == 1 {
+		ck, _ = rCookie()
 	}
+	app := iris.New()
+	app.RegisterView(iris.HTML("./static", ".html").Reload(true))
+	app.Favicon("./static/favicon.ico")
 
-	loginCmd := flag.NewFlagSet("login", flag.ExitOnError)
-	username := loginCmd.String("u", "", "用户名")
-	password := loginCmd.String("p", "", "密码")
+	app.Get("/", func(ctx iris.Context) {
+		ctx.View("index.html")
+	})
 
-	uploadCmd := flag.NewFlagSet("upload", flag.ExitOnError)
-	filename := uploadCmd.String("f", "", "上传文件名")
-	upthread := uploadCmd.Int("t", 4, "上传线程数")
-	blocksize := uploadCmd.Int("bs", 4, "文件分块大小")
+	app.Get("/status", func(ctx iris.Context) {
+		//把结构体类型  转成json
+		ctx.JSON(status)
+	})
 
-	downloadCmd := flag.NewFlagSet("daownload", flag.ExitOnError)
-	downncd := downloadCmd.String("ncd", "", "nCoVDrive地址")
-	downthread := downloadCmd.Int("t", 4, "下载线程数")
-
-	infoCmd := flag.NewFlagSet("info", flag.ExitOnError)
-	infoncd := infoCmd.String("ncd", "", "nCoVDrive地址")
-
-	switch os.Args[1] {
-	case "login":
-		loginCmd.Parse(os.Args[2:])
-		ck, err := login(*username, *password)
+	app.Post("/login", func(ctx iris.Context) {
+		var user AcUser
+		ctx.ReadJSON(&user)
+		ck, err := login(user.Username, user.Password)
 		if err != nil {
-			fmt.Println(err)
+			//返回错误
 			return
 		}
 		wCookie(ck)
-	case "upload":
-		uploadCmd.Parse(os.Args[2:])
-		ck, err := rCookie()
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		upncd, err := upload(*filename, *blocksize*1024*1024, *upthread, ck)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		fmt.Println("地址：")
-		fmt.Println(nCoV(makeURL(upncd)))
-	case "download":
-		downloadCmd.Parse(os.Args[2:])
-		download(*downncd, *downthread)
-	case "info":
-		infoCmd.Parse(os.Args[2:])
-		infoMeta(*infoncd)
-	default:
-		fmt.Println("请使用 'login' , 'download' , 'upload' 或 'info' 子命令。\"-h\" 参数查看帮助。\n例如 acdrive login -h \n查看登录的帮助。")
-		os.Exit(1)
+	})
 
-	}
+	app.Post("/upload", func(ctx iris.Context) {
+		var upreq UpReq
+		ctx.ReadJSON(&upreq)
+
+		var upstatus UpStatus
+		status.Ups = append(status.Ups, upstatus)
+		// 请求参数格式化  请求参数是json类型转化成 UpReq 类型
+		// 比如 post 参数 {filepath:'xxxx'} 转成 UpReq 类型
+		//把 json 类型请求参数 转成结构体
+		go upload(upreq.FilePath, upreq.BlockSize, upreq.Thread, ck, upstatus)
+	})
+
+	app.Post("/download", func(ctx iris.Context) {
+		var downreq DownReq
+		ctx.ReadJSON(&downreq)
+
+		var downstatus DownStatus
+		status.Downs = append(status.Downs, downstatus)
+		go download(downreq.Ncd, downreq.Thread, downstatus)
+	})
+
+	app.Get("/info", func(ctx iris.Context) {
+		// ncd := ctx.Params().Get("ncd")
+		ncd := "nCoVDrive://aHR0cHM6Ly9pbWdzLmFpeGlmYW4uY29tL21ldGFfZTY5MmJkODRkOTgxMTUyNGQ2OTZhZjVhMWJjODlhZDdjZTQ3OWQwMw=="
+		info, err := infoMeta(ncd)
+		if err != nil {
+			//返回错误
+
+		}
+		ctx.JSON(info)
+	})
+
+	app.Get("/profile/{username:string}", profileByUsername)
+	app.Run(iris.Addr(":8080"), iris.WithCharset("UTF-8"))
+
+}
+func profileByUsername(ctx iris.Context) {
+	//获取路由参数
+	username := ctx.Params().Get("username")
+	//向数据模板传值 当然也可以绑定其他值
+	ctx.ViewData("Username", username)
+	//渲染模板 ./web/views/profile.html
+
+	//把获得的动态数据username 绑定在 ./web/views/profile.html 模板 语法{{}} {{ .Username }}
+
+	ctx.View("profile.html")
 }
