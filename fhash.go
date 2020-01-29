@@ -12,6 +12,7 @@ type dataBlock struct {
 	index  int
 	offset int64
 	sha1   string
+	size   int
 }
 
 func calcSha1(f *os.File) string {
@@ -38,7 +39,7 @@ func readInChunk(f *os.File, dataBlockch chan<- dataBlock, size int) {
 		copybuf := make([]byte, n)
 		copy(copybuf, buf)
 		sha1 := sha1.Sum(copybuf)
-		dataBlock := dataBlock{copybuf, index, offset, hex.EncodeToString(sha1[:])}
+		dataBlock := dataBlock{copybuf, index, offset, hex.EncodeToString(sha1[:]), n}
 		dataBlockch <- dataBlock
 		offset += int64(n)
 		index++

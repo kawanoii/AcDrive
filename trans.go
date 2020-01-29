@@ -94,7 +94,7 @@ func upload(filename string, blockSize int, thread int, cookies Cookies) (string
 		if err != nil {
 			return blockMeta, err
 		}
-		blockMeta = BlockMeta{dataBlock.index, makeURL(key), dataBlock.offset, dataBlock.sha1}
+		blockMeta = BlockMeta{dataBlock.index, makeURL(key), dataBlock.offset, dataBlock.sha1, dataBlock.size}
 		return blockMeta, nil
 	}
 
@@ -130,7 +130,7 @@ func upload(filename string, blockSize int, thread int, cookies Cookies) (string
 			for dataBlock := range dataBlockch {
 				if skip(makeURL("block_" + dataBlock.sha1)) {
 					mutex.Lock()
-					meta.Block[dataBlock.index] = BlockMeta{dataBlock.index, makeURL("block_" + dataBlock.sha1), dataBlock.offset, dataBlock.sha1}
+					meta.Block[dataBlock.index] = BlockMeta{dataBlock.index, makeURL("block_" + dataBlock.sha1), dataBlock.offset, dataBlock.sha1, dataBlock.size}
 					mutex.Unlock()
 					fmt.Println("第", dataBlock.index, "块秒传成功！")
 					continue

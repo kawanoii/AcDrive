@@ -20,6 +20,7 @@ type BlockMeta struct {
 	URL    string `json:"url"`
 	Offset int64  `json:"offset"`
 	Sha1   string `json:"sha1"`
+	Size   int    `json:"size"`
 }
 
 // func (meta Meta) blockOffset(index int) int64 {
