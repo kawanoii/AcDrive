@@ -14,6 +14,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -25,6 +26,11 @@ type UploadSuccess struct {
 //UploadFail 上传图片失败时返回的json
 type UploadFail struct {
 	Error string `json:"error"`
+}
+
+type update struct {
+	key   string
+	value string
 }
 
 func imageUpload(bmp []byte, uptoken string, bmpName string) (string, error) {
@@ -66,7 +72,7 @@ func imageUpload(bmp []byte, uptoken string, bmpName string) (string, error) {
 	return uploadresp.Key, nil
 }
 
-func upload(filename string, blockSize int, thread int, cookies Cookies, ups UpStatus) {
+func upload(filename string, blockSize int, thread int, cookies Cookies, ups UpStatus, upch chan UpStatus) {
 	skip := func(key string) bool {
 		res, err := http.Get(key)
 		if err != nil || res.StatusCode != 200 {
@@ -91,6 +97,7 @@ func upload(filename string, blockSize int, thread int, cookies Cookies, ups UpS
 			key, err = imageUpload(bmp, uptoken, bmpName)
 			index++
 			ups.Message = "第" + strconv.Itoa(dataBlock.index) + "块上传出错,重试" + strconv.Itoa(index) + "/ 7 原因：" + err.Error()
+			upch <- ups
 			fmt.Println("第", dataBlock.index, "块上传出错,重试", index, "/ 7", "原因：", err)
 		}
 		if err != nil {
@@ -99,36 +106,38 @@ func upload(filename string, blockSize int, thread int, cookies Cookies, ups UpS
 		blockMeta = BlockMeta{dataBlock.index, makeURL(key), dataBlock.offset, dataBlock.sha1, dataBlock.size}
 		return blockMeta, nil
 	}
-
 	ups.Code = 1
-
+	ups.OKNUM = 0
+	upch <- ups
 	f, err := os.Open(filename)
 	if err != nil {
+		ups.Code = -1
 		ups.Error = errors.New("打开文件出错" + err.Error())
 		fmt.Println("打开文件时出错。", err)
-		ups.Code = -1
+		upch <- ups
 		return
 	}
 	defer f.Close()
 	fileInfo, _ := f.Stat()
 	ups.Filename = fileInfo.Name()
 	ups.FileSize = fileInfo.Size()
-	ups.OKNUM = 0
 	allBlock := int(math.Ceil(float64(fileInfo.Size()) / float64(blockSize)))
 	ups.BlockNum = allBlock
 	fmt.Println("开始上传")
 	ups.Message = "正在计算校验和。"
+	upch <- ups
 	fmt.Println("计算校验和。")
 	fileSha1 := calcSha1(f)
 	ups.FileSha1 = fileSha1
+	upch <- ups
 	fmt.Println("计算完毕。")
 	if skip(makeURL("meta_" + fileSha1)) {
-		ups.Message = "秒传成功！"
-		ups.OKNUM = allBlock
+		ups.OKNUM = int32(allBlock)
 		ups.Code = 0
 		ups.Ncd = nCoV(makeURL("meta_" + fileSha1))
+		ups.Message = "秒传成功！"
 		fmt.Println(fileInfo.Name(), "秒传成功！")
-		// fmt.Println(nCoV(makeURL("meta_" + fileSha1)))
+		upch <- ups
 		return
 	}
 	var mutex sync.RWMutex
@@ -147,24 +156,27 @@ func upload(filename string, blockSize int, thread int, cookies Cookies, ups UpS
 				if skip(makeURL("block_" + dataBlock.sha1)) {
 					mutex.Lock()
 					meta.Block[dataBlock.index] = BlockMeta{dataBlock.index, makeURL("block_" + dataBlock.sha1), dataBlock.offset, dataBlock.sha1, dataBlock.size}
-					ups.OKNUM++
 					mutex.Unlock()
+					atomic.AddInt32(&ups.OKNUM, 1)
 					ups.Message = "第" + strconv.Itoa(dataBlock.index) + "块秒传成功！"
+					upch <- ups
 					fmt.Println("第", dataBlock.index, "块秒传成功！")
 					continue
 				}
 				blockMeta, err := core(dataBlock, cookies)
 				if err != nil {
 					ups.Message = "第" + strconv.Itoa(dataBlock.index) + "块上传失败，已跳过。"
+					upch <- ups
 					fmt.Println("第", dataBlock.index, "块上传失败，已跳过。")
 					flag = true
 					continue
 				}
 				ups.Message = "第" + strconv.Itoa(blockMeta.Index) + "块上传完成。"
+				atomic.AddInt32(&ups.OKNUM, 1)
+				upch <- ups
 				fmt.Println("第", blockMeta.Index, "块上传完成。")
 				mutex.Lock()
 				meta.Block[dataBlock.index] = blockMeta
-				ups.OKNUM++
 				mutex.Unlock()
 			}
 		}()
@@ -174,6 +186,7 @@ func upload(filename string, blockSize int, thread int, cookies Cookies, ups UpS
 	if flag {
 		ups.Error = errors.New("有块未上传成功，故未上传Meta，请重新登录再试！")
 		ups.Code = -1
+		upch <- ups
 		return
 	}
 	meta.Time = time.Now().Unix()
@@ -186,6 +199,7 @@ func upload(filename string, blockSize int, thread int, cookies Cookies, ups UpS
 		ups.Error = err
 		ups.Code = -1
 		fmt.Println(err)
+		upch <- ups
 		return
 	}
 	uptoken, err := getUpToken(cookies)
@@ -194,6 +208,7 @@ func upload(filename string, blockSize int, thread int, cookies Cookies, ups UpS
 		ups.Error = errors.New("上传Meta获取Token时错误。" + err.Error())
 		fmt.Println("上传Meta获取Token时错误。", err)
 		ups.Code = -1
+		upch <- ups
 		return
 	}
 	metaBmp := makeBmp([]byte(metaJSON))
@@ -206,18 +221,21 @@ func upload(filename string, blockSize int, thread int, cookies Cookies, ups UpS
 		metakey, err = imageUpload(metaBmp, uptoken, bmpName)
 		index++
 		ups.Message = "Meta上传出错,重试" + strconv.Itoa(index) + "/ 7 原因:" + err.Error()
+		upch <- ups
 		fmt.Println("Meta上传出错,重试", index, "/ 7", "原因:", err)
 	}
 	if err != nil {
 		ups.Message = "Meta上传错误重试老多次还不行 :("
 		ups.Error = errors.New("Meta上传错误" + err.Error())
 		ups.Code = -1
+		upch <- ups
 		return
 	}
 	ups.Message = "上传完毕！"
 	ups.Code = 0
 	fmt.Println("上传完毕！")
 	ups.Ncd = nCoV(makeURL(metakey))
+	upch <- ups
 	return
 }
 
@@ -233,7 +251,7 @@ func imageDownload(url string) ([]byte, error) {
 	return imagedata, nil
 }
 
-func download(ncd string, thread int, downs DownStatus) {
+func download(ncd string, thread int, downs DownStatus, downch chan DownStatus) {
 	skip := func(index int, historyIndex []int) bool {
 		for _, hIndex := range historyIndex {
 			if index == hIndex {
@@ -253,6 +271,8 @@ func download(ncd string, thread int, downs DownStatus) {
 			if err == nil {
 				err = errors.New("Sha1校验失败。")
 			}
+			downs.Message = "第" + strconv.Itoa(blockMeta.Index) + "块下载出错,重试" + strconv.Itoa(index) + "/ 7" + " 原因：" + err.Error()
+			downch <- downs
 			fmt.Println("第", blockMeta.Index, "块下载出错,重试", index, "/ 7", "原因：", err)
 			blockData, err = imageDownload(blockMeta.URL)
 			blockDataSha1 = sha1.Sum(blockData)
@@ -272,21 +292,25 @@ func download(ncd string, thread int, downs DownStatus) {
 	downs.Code = 1
 	downs.OKNUM = 0
 
+	downch <- downs
+
 	var fmutex sync.RWMutex
 	var hmutex sync.RWMutex
 	var wg sync.WaitGroup
 	blockMetach := make(chan BlockMeta)
 	meta, err := getMeta(ncd)
 	if err != nil {
-		downs.Error = errors.New("获取Meta出错。" + err.Error())
+		downs.Error = "获取Meta出错。" + err.Error()
 		downs.Code = -1
 		fmt.Println("获取Meta出错。", err)
+		downch <- downs
 		return
 	}
 	downs.BlockNum = len(meta.Block)
 	downs.Filename = meta.Filename
 	downs.FileSha1 = meta.Sha1
-	downs.FileSize = meta.Size
+	downs.FileSize = sizeString(meta.Size)
+	downch <- downs
 	history, err := rHistory(meta.Sha1)
 	if err != nil {
 		history.FileSha1 = meta.Sha1
@@ -296,13 +320,15 @@ func download(ncd string, thread int, downs DownStatus) {
 		f, err = os.Create(meta.Filename)
 	}
 	if err != nil {
-		downs.Error = errors.New("创建文件出错。" + err.Error())
+		downs.Error = "创建文件出错。" + err.Error()
 		downs.Code = -1
 		fmt.Println("创建文件时出错。", err)
+		downch <- downs
 		return
 	}
 	// fmt.Println(meta)
 	downs.Message = "开始下载!"
+	downch <- downs
 	fmt.Println("开始下载！")
 	for i := 0; i < thread; i++ {
 		wg.Add(1)
@@ -311,24 +337,25 @@ func download(ncd string, thread int, downs DownStatus) {
 			for blockMeta := range blockMetach {
 				if skip(blockMeta.Index, history.BlockIndex) {
 					downs.Message = "第" + strconv.Itoa(blockMeta.Index) + "块已下载，跳过"
-					hmutex.Lock()
-					downs.OKNUM++
-					hmutex.Unlock()
+					atomic.AddInt32(&downs.OKNUM, 1)
+					downch <- downs
 					fmt.Println("第", blockMeta.Index, "块已下载，跳过")
 					continue
 				}
 				err := core(blockMeta, &fmutex, f)
 				if err != nil {
 					downs.Message = "第" + strconv.Itoa(blockMeta.Index) + "块下载失败，已跳过。"
+					downch <- downs
 					fmt.Println("第", blockMeta.Index, "块下载失败，已跳过。")
 					continue
 				}
 				hmutex.Lock()
 				history.BlockIndex = append(history.BlockIndex, blockMeta.Index)
-				downs.OKNUM++
 				wHistory(history)
 				hmutex.Unlock()
 				downs.Message = "第" + strconv.Itoa(blockMeta.Index) + "块下载完成。"
+				atomic.AddInt32(&downs.OKNUM, 1)
+				downch <- downs
 				fmt.Println("第", blockMeta.Index, "块下载完成。")
 			}
 		}()
@@ -341,13 +368,15 @@ func download(ncd string, thread int, downs DownStatus) {
 	fileSha1 := calcSha1(f)
 	if fileSha1 != meta.Sha1 {
 		downs.Message = "文件校验失败，下载失败！请重试！"
-		downs.Error = errors.New("文件校验失败，下载失败！请重试！")
+		downs.Error = "文件校验失败，下载失败！请重试！"
 		downs.Code = -1
+		downch <- downs
 		fmt.Println("文件校验失败，下载失败！请重试！")
 		return
 	}
 	downs.Message = "文件校验通过，下载完成！"
 	downs.Code = 0
+	downch <- downs
 	fmt.Println("文件校验通过，下载完成！")
 	return
 }
@@ -357,6 +386,7 @@ func infoMeta(ncd string) (Info, error) {
 	meta, err := getMeta(ncd)
 	if err != nil {
 		fmt.Println("获取Meta出错。", err)
+		info.Error = "获取Meta出错。" + err.Error()
 		return info, err
 	}
 	tm := time.Unix(meta.Time, 0)

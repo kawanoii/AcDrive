@@ -47,7 +47,3 @@ func getMeta(ncd string) (Meta, error) {
 	}
 	return meta, nil
 }
-
-func makeURL(key string) string {
-	return "https://imgs.aixifan.com/" + key
-}

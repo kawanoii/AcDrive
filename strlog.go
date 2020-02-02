@@ -2,17 +2,19 @@ package main
 
 import (
 	"encoding/base64"
-	"fmt"
+	"errors"
 	"strconv"
-	"time"
 )
 
 func nCoV(url string) string {
-	return "nCoVDrive://" + base64.StdEncoding.EncodeToString([]byte(url))
+	return "nCoVDrive-" + base64.StdEncoding.EncodeToString([]byte(url))
 }
 
 func unnCov(ncd string) (string, error) {
-	decodeBytes, err := base64.StdEncoding.DecodeString(ncd[12:])
+	if len(ncd) < 11 {
+		return "", errors.New("nCoVDrive 链接过短")
+	}
+	decodeBytes, err := base64.StdEncoding.DecodeString(ncd[10:])
 	return string(decodeBytes), err
 }
 
@@ -32,6 +34,6 @@ func sizeString(byteint int64) string {
 	}
 }
 
-func log(message string) {
-	fmt.Println(time.Now(), message)
+func makeURL(key string) string {
+	return "https://imgs.aixifan.com/" + key
 }
