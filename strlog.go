@@ -1,19 +1,28 @@
 package main
 
 import (
-	"encoding/base64"
-	"fmt"
+	"errors"
 	"strconv"
-	"time"
 )
 
-func nCoV(url string) string {
-	return "nCoVDrive://" + base64.StdEncoding.EncodeToString([]byte(url))
+func makeMetaURL(key string) string {
+	return "acgo://" + key
 }
 
-func unnCov(ncd string) (string, error) {
-	decodeBytes, err := base64.StdEncoding.DecodeString(ncd[12:])
-	return string(decodeBytes), err
+func unMetaURL(metaurl string) (string, error) {
+	if len(metaurl) != 52 {
+		return "", errors.New("Meta URL 长度不符。")
+	}
+
+	if metaurl[:7] != "acgo://" {
+		return "", errors.New("Meta URL 通常以 acgo:// 开头。")
+
+	}
+	return makeURL(metaurl[7:]), nil
+}
+
+func makeURL(key string) string {
+	return "https://imgs.aixifan.com/" + key
 }
 
 func sizeString(byteint int64) string {
@@ -30,8 +39,4 @@ func sizeString(byteint int64) string {
 		return strconv.FormatFloat(byte, 'f', 3, 64) + " B"
 
 	}
-}
-
-func log(message string) {
-	fmt.Println(time.Now(), message)
 }

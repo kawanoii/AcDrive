@@ -23,11 +23,11 @@ func main() {
 	blocksize := uploadCmd.Int("bs", 4, "文件分块大小")
 
 	downloadCmd := flag.NewFlagSet("daownload", flag.ExitOnError)
-	downncd := downloadCmd.String("ncd", "", "nCoVDrive地址")
+	downmetaurl := downloadCmd.String("m", "", "Meta URL,通常以\"acgo://\"开头")
 	downthread := downloadCmd.Int("t", 4, "下载线程数")
 
 	infoCmd := flag.NewFlagSet("info", flag.ExitOnError)
-	infoncd := infoCmd.String("ncd", "", "nCoVDrive地址")
+	infometaurl := infoCmd.String("m", "", "Meta URL,通常以\"acgo://\"开头")
 
 	switch os.Args[1] {
 	case "login":
@@ -45,19 +45,19 @@ func main() {
 			fmt.Println(err)
 			return
 		}
-		upncd, err := upload(*filename, *blocksize*1024*1024, *upthread, ck)
+		metakey, err := upload(*filename, *blocksize*1024*1024, *upthread, ck)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
 		fmt.Println("地址：")
-		fmt.Println(nCoV(makeURL(upncd)))
+		fmt.Println(makeMetaURL(metakey))
 	case "download":
 		downloadCmd.Parse(os.Args[2:])
-		download(*downncd, *downthread)
+		download(*downmetaurl, *downthread)
 	case "info":
 		infoCmd.Parse(os.Args[2:])
-		infoMeta(*infoncd)
+		infoMeta(*infometaurl)
 	default:
 		fmt.Println("请使用 'login' , 'download' , 'upload' 或 'info' 子命令。\"-h\" 参数查看帮助。\n例如 acdrive login -h \n查看登录的帮助。")
 		os.Exit(1)

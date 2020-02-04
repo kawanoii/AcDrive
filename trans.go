@@ -111,7 +111,6 @@ func upload(filename string, blockSize int, thread int, cookies Cookies) (string
 	fmt.Println("计算完毕。")
 	if skip(makeURL("meta_" + fileSha1)) {
 		fmt.Println(fileInfo.Name(), "秒传成功！")
-		// fmt.Println(nCoV(makeURL("meta_" + fileSha1)))
 		return "meta_" + fileSha1, nil
 	}
 	var mutex sync.RWMutex
@@ -237,6 +236,7 @@ func download(ncd string, thread int) {
 	var hmutex sync.RWMutex
 	var wg sync.WaitGroup
 	blockMetach := make(chan BlockMeta)
+	fmt.Println("解析Meta")
 	meta, err := getMeta(ncd)
 	if err != nil {
 		fmt.Println("获取Meta出错。", err)
@@ -267,14 +267,14 @@ func download(ncd string, thread int) {
 				}
 				err := core(blockMeta, &fmutex, f)
 				if err != nil {
-					fmt.Println("第", blockMeta.Index, "块下载失败，已跳过。")
+					fmt.Println("第", blockMeta.Index, "块下载失败，已跳过。错误信息:", err.Error())
 					continue
 				}
 				hmutex.Lock()
 				history.BlockIndex = append(history.BlockIndex, blockMeta.Index)
 				wHistory(history)
 				hmutex.Unlock()
-				fmt.Println("第", blockMeta.Index, "块下载完成。")
+				fmt.Println("第", blockMeta.Index, "块下载完成并通过校验。")
 			}
 		}()
 	}
@@ -283,6 +283,7 @@ func download(ncd string, thread int) {
 	}
 	close(blockMetach)
 	wg.Wait()
+	fmt.Println("文件下载全部完成，在在对整个文件进行校验.\n若文件较大,可能会需要一段时间.\n如果你想跳过校验的话，直接结束程序就好啦.")
 	fileSha1 := calcSha1(f)
 	if fileSha1 != meta.Sha1 {
 		fmt.Println("文件校验失败，下载失败！请重试！")
