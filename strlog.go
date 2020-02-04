@@ -6,19 +6,19 @@ import (
 )
 
 func makeMetaURL(key string) string {
-	return "acgo://" + key
+	return "acdrive://" + key
 }
 
 func unMetaURL(metaurl string) (string, error) {
-	if len(metaurl) != 52 {
+	if len(metaurl) != 55 {
 		return "", errors.New("Meta URL 长度不符。")
 	}
 
-	if metaurl[:7] != "acgo://" {
-		return "", errors.New("Meta URL 通常以 acgo:// 开头。")
+	if metaurl[:10] != "acdrive://" {
+		return "", errors.New("Meta URL 通常以 acdrive:// 开头。")
 
 	}
-	return makeURL(metaurl[7:]), nil
+	return makeURL(metaurl[10:]), nil
 }
 
 func makeURL(key string) string {

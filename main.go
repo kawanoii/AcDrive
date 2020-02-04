@@ -23,11 +23,11 @@ func main() {
 	blocksize := uploadCmd.Int("bs", 4, "文件分块大小")
 
 	downloadCmd := flag.NewFlagSet("daownload", flag.ExitOnError)
-	downmetaurl := downloadCmd.String("m", "", "Meta URL,通常以\"acgo://\"开头")
+	downmetaurl := downloadCmd.String("m", "", "Meta URL,通常以\"acdrive://\"开头")
 	downthread := downloadCmd.Int("t", 4, "下载线程数")
 
 	infoCmd := flag.NewFlagSet("info", flag.ExitOnError)
-	infometaurl := infoCmd.String("m", "", "Meta URL,通常以\"acgo://\"开头")
+	infometaurl := infoCmd.String("m", "", "Meta URL,通常以\"acdrive://\"开头")
 
 	switch os.Args[1] {
 	case "login":

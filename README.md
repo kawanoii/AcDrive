@@ -53,7 +53,7 @@ THREAD: 下载线程数, 默认值为4
 ```
 ./acdrive info [-h] -m *meta*
 
-meta: META URL(通常以 acgo://开头)
+meta: META URL(通常以 acdrive://开头)
 ```
 
 
