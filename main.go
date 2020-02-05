@@ -22,7 +22,7 @@ func main() {
 	upthread := uploadCmd.Int("t", 4, "上传线程数")
 	blocksize := uploadCmd.Int("bs", 4, "文件分块大小")
 
-	downloadCmd := flag.NewFlagSet("daownload", flag.ExitOnError)
+	downloadCmd := flag.NewFlagSet("download", flag.ExitOnError)
 	downmetaurl := downloadCmd.String("m", "", "Meta URL,通常以\"acdrive://\"开头")
 	downthread := downloadCmd.Int("t", 4, "下载线程数")
 
