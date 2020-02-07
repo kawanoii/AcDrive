@@ -14,39 +14,36 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/Si-Huan/mkbmp"
 )
 
-//UploadSuccess 上传图片成功时返回的json
-type UploadSuccess struct {
-	Key string `json:"key"`
+//UploadR 上传图片成功时返回的json
+type UploadR struct {
+	Code   int    `json:"code"`
+	ImgURL string `json:"imgurl"`
+	Msg    string `json:"msg"`
 }
 
-//UploadFail 上传图片失败时返回的json
-type UploadFail struct {
-	Error string `json:"error"`
-}
-
-func imageUpload(bmp []byte, uptoken string, bmpName string) (string, error) {
+func imageUpload(bmp []byte, sha1 string) (string, error) {
 	var buff bytes.Buffer
 	writer := multipart.NewWriter(&buff)
-	w, _ := writer.CreateFormFile("file", bmpName)
+	w, _ := writer.CreateFormFile("Filedata", sha1+".bmp")
 	w.Write(bmp)
-	writer.WriteField("token", uptoken)
-	writer.WriteField("name", bmpName)
-	writer.WriteField("key", bmpName) //可自定义，决定最终图片 url
+	writer.WriteField("file", "multipart")
 	writer.Close()
 	var client http.Client
 	req, err := http.NewRequest(
 		http.MethodPost,
-		"https://up.qbox.me/",
+		"https://api.uomg.com/api/image.ali",
 		&buff)
 
 	if err != nil {
 		panic(err)
 	}
 	req.Header.Add("user-agent", "Mozilla/5.0 (Windows NT 10.0; Wisn64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.88 Safari/537.36")
-	req.Header.Add("Origin", "https://www.acfun.cn")
-	req.Header.Add("Referer", "https://www.acfun.cn/member/")
+	req.Header.Add("Origin", "https://www.taobao.com")
+	req.Header.Add("Referer", "https://www.taobao.com/")
 	req.Header.Add("Content-Type", writer.FormDataContentType())
 
 	resp, err := client.Do(req)
@@ -54,47 +51,39 @@ func imageUpload(bmp []byte, uptoken string, bmpName string) (string, error) {
 		return "", err
 	}
 	bbody, _ := ioutil.ReadAll(resp.Body)
-	// fmt.Println(resp.StatusCode)
+	// fmt.Println(string(bbody))
 	if resp.StatusCode != 200 {
-		var uploadresp UploadFail
-		json.Unmarshal(bbody, &uploadresp)
-		return "", errors.New(uploadresp.Error)
+		return "", errors.New("非200返回")
 	}
-	var uploadresp UploadSuccess
+	var uploadresp UploadR
 	json.Unmarshal(bbody, &uploadresp)
-	return uploadresp.Key, nil
+	if uploadresp.Code != 1 {
+		// fmt.Println(uploadresp.Msg)
+		return "", errors.New("上传失败,msg:" + uploadresp.Msg)
+	}
+	if uploadresp.ImgURL == "" {
+		return "", errors.New("图片地址为NULL")
+	}
+	return uploadresp.ImgURL, nil
 }
 
-func upload(filename string, blockSize int, thread int, cookies Cookies) (string, error) {
-	skip := func(key string) bool {
-		res, err := http.Get(key)
-		if err != nil || res.StatusCode != 200 {
-			return false
-		}
-		return true
-	}
-	core := func(dataBlock dataBlock, cookies Cookies) (BlockMeta, error) {
+func upload(filename string, blockSize int, thread int) (string, error) {
+	core := func(dataBlock dataBlock) (BlockMeta, error) {
 		var blockMeta BlockMeta
-		uptoken, err := getUpToken(cookies)
-		if err != nil {
-			fmt.Println("上传第", dataBlock.index, "块获取Token时出错", err)
-			return blockMeta, err
-		}
-		bmp := makeBmp(dataBlock.data)
-		bmpName := "block_" + dataBlock.sha1
-		key, err := imageUpload(bmp, uptoken, bmpName)
-		for index := 0; index < 7; index++ {
+		bmp := mkalibmp(dataBlock.data)
+		imgurl, err := imageUpload(bmp, dataBlock.sha1)
+		for index := 0; index < 1000; index++ {
 			if err == nil {
 				break
 			}
-			key, err = imageUpload(bmp, uptoken, bmpName)
+			imgurl, err = imageUpload(bmp, dataBlock.sha1)
 			index++
-			fmt.Println("第", dataBlock.index, "块上传出错,重试", index, "/ 7", "原因：", err)
+			fmt.Println("第", dataBlock.index, "块上传出错,重试", index, "/ 1000", "原因：", err)
 		}
 		if err != nil {
 			return blockMeta, err
 		}
-		blockMeta = BlockMeta{dataBlock.index, makeURL(key), dataBlock.offset, dataBlock.sha1, dataBlock.size}
+		blockMeta = BlockMeta{dataBlock.index, imgurl, dataBlock.offset, dataBlock.sha1, dataBlock.size}
 		return blockMeta, nil
 	}
 
@@ -109,10 +98,6 @@ func upload(filename string, blockSize int, thread int, cookies Cookies) (string
 	fmt.Println("计算校验和。")
 	fileSha1 := calcSha1(f)
 	fmt.Println("计算完毕。")
-	if skip(makeURL("meta_" + fileSha1)) {
-		fmt.Println(fileInfo.Name(), "秒传成功！")
-		return "meta_" + fileSha1, nil
-	}
 	var mutex sync.RWMutex
 	var wg sync.WaitGroup
 	flag := false
@@ -127,14 +112,7 @@ func upload(filename string, blockSize int, thread int, cookies Cookies) (string
 		go func() {
 			defer wg.Done()
 			for dataBlock := range dataBlockch {
-				if skip(makeURL("block_" + dataBlock.sha1)) {
-					mutex.Lock()
-					meta.Block[dataBlock.index] = BlockMeta{dataBlock.index, makeURL("block_" + dataBlock.sha1), dataBlock.offset, dataBlock.sha1, dataBlock.size}
-					mutex.Unlock()
-					fmt.Println("第", dataBlock.index, "块秒传成功！")
-					continue
-				}
-				blockMeta, err := core(dataBlock, cookies)
+				blockMeta, err := core(dataBlock)
 				if err != nil {
 					fmt.Println("第", dataBlock.index, "块上传失败，已跳过。")
 					flag = true
@@ -161,21 +139,15 @@ func upload(filename string, blockSize int, thread int, cookies Cookies) (string
 		fmt.Println(err)
 		return "", err
 	}
-	uptoken, err := getUpToken(cookies)
-	if err != nil {
-		fmt.Println("上传Meta获取Token时错误。", err)
-		return "", err
-	}
-	metaBmp := makeBmp([]byte(metaJSON))
-	bmpName := "meta_" + meta.Sha1
-	metakey, err := imageUpload(metaBmp, uptoken, bmpName)
-	for index := 0; index < 7; index++ {
+	metaBmp := mkbmp.MakeBmp([]byte(metaJSON))
+	metakey, err := imageUpload(metaBmp, meta.Sha1)
+	for index := 0; index < 100; index++ {
 		if err == nil {
 			break
 		}
-		metakey, err = imageUpload(metaBmp, uptoken, bmpName)
+		metakey, err = imageUpload(metaBmp, meta.Sha1)
 		index++
-		fmt.Println("Meta上传出错,重试", index, "/ 7", "原因:", err)
+		fmt.Println("Meta上传出错,重试", index, "/ 100", "原因:", err)
 	}
 	if err != nil {
 		return "", err
@@ -207,7 +179,7 @@ func download(ncd string, thread int) {
 	}
 	core := func(blockMeta BlockMeta, mutex *sync.RWMutex, f *os.File) error {
 		blockData, err := imageDownload(blockMeta.URL)
-		blockDataSha1 := sha1.Sum(blockData[62:])
+		blockDataSha1 := sha1.Sum(blockData[54:])
 		blockDataSha1Hex := hex.EncodeToString(blockDataSha1[:])
 		for index := 0; index < 7; index++ {
 			if err == nil && blockDataSha1Hex == blockMeta.Sha1 {
@@ -218,7 +190,7 @@ func download(ncd string, thread int) {
 			}
 			fmt.Println("第", blockMeta.Index, "块下载出错,重试", index, "/ 7", "原因：", err)
 			blockData, err = imageDownload(blockMeta.URL)
-			blockDataSha1 = sha1.Sum(blockData[62:])
+			blockDataSha1 = sha1.Sum(blockData[54:])
 			blockDataSha1Hex = hex.EncodeToString(blockDataSha1[:])
 
 		}
@@ -226,7 +198,7 @@ func download(ncd string, thread int) {
 			return err
 		}
 		mutex.Lock()
-		f.WriteAt(blockData[62:], blockMeta.Offset)
+		f.WriteAt(blockData[54:][:blockMeta.Size], blockMeta.Offset)
 		mutex.Unlock()
 		return nil
 

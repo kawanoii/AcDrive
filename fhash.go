@@ -36,7 +36,7 @@ func readInChunk(f *os.File, dataBlockch chan<- dataBlock, size int) {
 	offset := int64(0)
 	index := 0
 	for n, _ := f.Read(buf); n > 0; n, _ = f.Read(buf) {
-		copybuf := make([]byte, n)
+		copybuf := make([]byte, size)
 		copy(copybuf, buf)
 		sha1 := sha1.Sum(copybuf)
 		dataBlock := dataBlock{copybuf, index, offset, hex.EncodeToString(sha1[:]), n}
