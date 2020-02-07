@@ -218,7 +218,7 @@ func download(ncd string, thread int) {
 			}
 			fmt.Println("第", blockMeta.Index, "块下载出错,重试", index, "/ 7", "原因：", err)
 			blockData, err = imageDownload(blockMeta.URL)
-			blockDataSha1 = sha1.Sum(blockData)
+			blockDataSha1 = sha1.Sum(blockData[62:])
 			blockDataSha1Hex = hex.EncodeToString(blockDataSha1[:])
 
 		}
