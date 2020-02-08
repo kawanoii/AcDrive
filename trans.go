@@ -134,7 +134,7 @@ func upload(filename string, blockSize int, thread int, cookies Cookies, ups UpS
 	if skip(makeURL("meta_" + fileSha1)) {
 		ups.OKNUM = int32(allBlock)
 		ups.Code = 0
-		ups.Ncd = nCoV(makeURL("meta_" + fileSha1))
+		ups.Ncd = makeMetaURL("meta_" + fileSha1)
 		ups.Message = "秒传成功！"
 		fmt.Println(fileInfo.Name(), "秒传成功！")
 		upch <- ups
@@ -234,7 +234,7 @@ func upload(filename string, blockSize int, thread int, cookies Cookies, ups UpS
 	ups.Message = "上传完毕！"
 	ups.Code = 0
 	fmt.Println("上传完毕！")
-	ups.Ncd = nCoV(makeURL(metakey))
+	ups.Ncd = makeMetaURL(metakey)
 	upch <- ups
 	return
 }
@@ -275,7 +275,7 @@ func download(ncd string, thread int, downs DownStatus, downch chan DownStatus) 
 			downch <- downs
 			fmt.Println("第", blockMeta.Index, "块下载出错,重试", index, "/ 7", "原因：", err)
 			blockData, err = imageDownload(blockMeta.URL)
-			blockDataSha1 = sha1.Sum(blockData)
+			blockDataSha1 = sha1.Sum(blockData[62:])
 			blockDataSha1Hex = hex.EncodeToString(blockDataSha1[:])
 
 		}
@@ -298,6 +298,7 @@ func download(ncd string, thread int, downs DownStatus, downch chan DownStatus) 
 	var hmutex sync.RWMutex
 	var wg sync.WaitGroup
 	blockMetach := make(chan BlockMeta)
+	fmt.Println("解析Meta")
 	meta, err := getMeta(ncd)
 	if err != nil {
 		downs.Error = "获取Meta出错。" + err.Error()
@@ -356,7 +357,7 @@ func download(ncd string, thread int, downs DownStatus, downch chan DownStatus) 
 				downs.Message = "第" + strconv.Itoa(blockMeta.Index) + "块下载完成。"
 				atomic.AddInt32(&downs.OKNUM, 1)
 				downch <- downs
-				fmt.Println("第", blockMeta.Index, "块下载完成。")
+				fmt.Println("第", blockMeta.Index, "块下载完成并通过校验。")
 			}
 		}()
 	}
@@ -365,6 +366,7 @@ func download(ncd string, thread int, downs DownStatus, downch chan DownStatus) 
 	}
 	close(blockMetach)
 	wg.Wait()
+	fmt.Println("文件下载全部完成，在在对整个文件进行校验.\n若文件较大,可能会需要一段时间.\n如果你想跳过校验的话，直接结束程序就好啦.")
 	fileSha1 := calcSha1(f)
 	if fileSha1 != meta.Sha1 {
 		downs.Message = "文件校验失败，下载失败！请重试！"

@@ -89,6 +89,8 @@ func wStatus(status Status) {
 
 func rStatus() Status {
 	var status Status
+	status.Downs = make(map[string]DownStatus)
+	status.Ups = make(map[string]UpStatus)
 	f, err := os.Open("status.json")
 	if err != nil {
 		return status

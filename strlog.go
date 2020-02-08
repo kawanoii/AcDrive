@@ -1,21 +1,28 @@
 package main
 
 import (
-	"encoding/base64"
 	"errors"
 	"strconv"
 )
 
-func nCoV(url string) string {
-	return "nCoVDrive-" + base64.StdEncoding.EncodeToString([]byte(url))
+func makeMetaURL(key string) string {
+	return "acdrive://" + key
 }
 
-func unnCov(ncd string) (string, error) {
-	if len(ncd) < 11 {
-		return "", errors.New("nCoVDrive 链接过短")
+func unMetaURL(metaurl string) (string, error) {
+	if len(metaurl) != 55 {
+		return "", errors.New("Meta URL 长度不符。")
 	}
-	decodeBytes, err := base64.StdEncoding.DecodeString(ncd[10:])
-	return string(decodeBytes), err
+
+	if metaurl[:10] != "acdrive://" {
+		return "", errors.New("Meta URL 通常以 acdrive:// 开头。")
+
+	}
+	return makeURL(metaurl[10:]), nil
+}
+
+func makeURL(key string) string {
+	return "https://imgs.aixifan.com/" + key
 }
 
 func sizeString(byteint int64) string {
@@ -32,8 +39,4 @@ func sizeString(byteint int64) string {
 		return strconv.FormatFloat(byte, 'f', 3, 64) + " B"
 
 	}
-}
-
-func makeURL(key string) string {
-	return "https://imgs.aixifan.com/" + key
 }

@@ -31,13 +31,13 @@ type BlockMeta struct {
 // 	return int64(offset)
 // }
 
-func getMeta(ncd string) (Meta, error) {
+func getMeta(metaurl string) (Meta, error) {
 	var meta Meta
-	metaURL, err := unnCov(ncd)
+	url, err := unMetaURL(metaurl)
 	if err != nil {
-		return meta, errors.New("nCovDrive地址有误。")
+		return meta, err
 	}
-	metaDATA, err := imageDownload(metaURL)
+	metaDATA, err := imageDownload(url)
 	if err != nil {
 		return meta, err
 	}

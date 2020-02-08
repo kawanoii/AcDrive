@@ -55,7 +55,7 @@
       <v-content>
         <v-container>
           <div  v-for="download in downs" :key=download.ID>
-          <v-card class="mx-auto" :color=cardcolor(download.Code)>
+          <v-card class="mx-auto" :color=cardcolor(download.code)>
             <v-card-title class="font-weight-medium body-1">{{ download.filename }}</v-card-title>
             <v-card-text>
               <p class="font-weight-thin caption">Ncd: {{ download.ncd }}</p>
@@ -114,6 +114,24 @@
         rate :function(oknum,allnum){
           return 100*oknum/allnum
         },
+        cardcolor: function(code) {
+          var color
+          switch(code){
+            case 0:
+              color = "green"
+              break;
+            case 1:
+              color = "blue"
+              break;
+            case 3:
+             color = "yellow"
+             break;
+            case -1:
+              color = "red"
+              break;
+          }
+          return color
+        }
       }
     })
     ws.onopen = function () {
